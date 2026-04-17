@@ -19,4 +19,10 @@ def remove_directory(dir_path):
     if dir_path.is_dir():
         shutil.rmtree(dir_path)
         
- 
+def is_numeric(s: str) -> bool:
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+    
