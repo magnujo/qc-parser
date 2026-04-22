@@ -1,14 +1,6 @@
-from pathlib import Path
 import pandas as pd
-from email import utils
-from logging import root
-from os import replace
 from pathlib import Path
-import re
-from wsgiref import headers
-import pandas as pd
 import utils
-from utils import is_numeric
 
 def parse_fastqc_file(filepath, zip_path):
     """Parse a FastQC data file into a dict of modules."""
@@ -61,7 +53,7 @@ def parse_fastqc_file(filepath, zip_path):
                     current_module, current_status, previous_line, module_lines_done = parse_module_header(line_parts, module_lines_done, i)
 
                 # Parse table headers
-                elif line.startswith("#") and not line.startswith("##") and not is_numeric(line_parts[1]):
+                elif line.startswith("#") and not line.startswith("##") and not utils.is_numeric(line_parts[1]):
                     current_headers = [line_parts[0][1:]] + line_parts[1:]
                     assert current_module is not None, f"Found header without a preceding module header on line {i}"
                     assert len(current_headers) > 1, f"Expected at least one header column in line: {line}"
@@ -71,7 +63,7 @@ def parse_fastqc_file(filepath, zip_path):
                     module_lines_done.add(previous_line)
                 
                 # Parse special header values (lines that start with # and have a numeric value in the second column)
-                elif line.startswith("#") and not line.startswith("##") and is_numeric(line_parts[1]):
+                elif line.startswith("#") and not line.startswith("##") and utils.is_numeric(line_parts[1]):
                     current_header_value = [line_parts[0][1:]] + line_parts[1:]
                     assert current_module is not None, f"Found header without a preceding module header on line {i}"
                     assert len(current_header_value) > 1, f"Expected at least one header column in line: {line}"
