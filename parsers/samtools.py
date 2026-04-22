@@ -1,43 +1,42 @@
 import csv
 from glob import glob
-import os
-
 
 def parse_files(paths_to_library_root_folder, output_tsv_path):
-    # First pass: collect all metrics to build column headers
-    metrics = []
-    full_paths = []
+    metrics_seen = set()
+    metrics_ordered = []  # preserves insertion order without O(n) `not in` checks
+    all_rows = []         # stores (filepath, {metric: value}) — avoids re-reading files
 
-    
     for filepath in paths_to_library_root_folder:
         pattern = f"{filepath}/stats/aligns/samtools_stats/*txt"
         matches = glob(pattern)
         num_of_files = len(matches)
         expected_num_of_files = 1
-        
-        assert num_of_files == expected_num_of_files, f"Expected exactly {expected_num_of_files} files matching pattern, but found {num_of_files}: {matches}"
-        
+
+        assert num_of_files == expected_num_of_files, (
+            f"Expected exactly {expected_num_of_files} files matching pattern, "
+            f"but found {num_of_files}: {matches}"
+        )
+
         filepath = matches[0]
-        full_paths.append(filepath)
-        
+        row = {}
+
         with open(filepath) as f:
             for line in f:
                 if line.startswith("SN\t"):
-                    metric = line.strip().split("\t")[1].rstrip(":")
-                    if metric not in metrics:
-                        metrics.append(metric)
+                    parts = line.split("\t")  # no need to strip before splitting
+                    metric = parts[1].rstrip(":")
+                    value = parts[2].strip()
+                    row[metric] = value
+                    if metric not in metrics_seen:
+                        metrics_seen.add(metric)
+                        metrics_ordered.append(metric)
 
-    # Second pass: extract values per file
+        all_rows.append((filepath, row))
+
+    # Single write pass
     with open(output_tsv_path, "w", newline="") as fout:
         writer = csv.writer(fout, delimiter="\t")
-        writer.writerow(["filename"] + metrics)
+        writer.writerow(["filename"] + metrics_ordered)
 
-        for filepath in full_paths:
-            row = {m: "" for m in metrics}
-            with open(filepath) as f:
-                for line in f:
-                    if line.startswith("SN\t"):
-                        parts = line.strip().split("\t")
-                        row[parts[1].rstrip(":")] = parts[2]
-            writer.writerow([filepath] + [row[m] for m in metrics])
-    
+        for filepath, row in all_rows:
+            writer.writerow([filepath] + [row.get(m, "") for m in metrics_ordered])
