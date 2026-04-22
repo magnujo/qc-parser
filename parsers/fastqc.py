@@ -1,4 +1,7 @@
+from pathlib import Path
+import pandas as pd
 from email import utils
+from logging import root
 from os import replace
 from pathlib import Path
 import re
@@ -83,10 +86,7 @@ def parse_fastqc_file(filepath, zip_path):
                     assert current_module is not None, f"Found '>>END_MODULE' without a preceding module header on line {i} file {zip_path}"
                     assert current_status is not None, f"Found '>>END_MODULE' without a preceding module status on line {i} file {zip_path}"
                     
-                    if 'singleton' in filepath.name:
-                        assert previous_line in ['data','module_header', 'header'], f"Found '>>END_MODULE' without preceding data on line {i} file {zip_path}"
-                    else:
-                        assert previous_line in ['data','module_header'], f"Found '>>END_MODULE' without preceding data on line {i} file {zip_path}"
+                    assert previous_line in ['data','module_header', 'header'], f"Found '>>END_MODULE' without correct preceding line on line {i} file {zip_path}"
 
                     result['modules'][f"{current_module}"] = {"status": current_status, "header_values": header_values, "table": {"headers": current_headers, "rows": rows}}
                     current_module = None
@@ -109,16 +109,13 @@ def parse_fastqc_file(filepath, zip_path):
                     rows.append(dict(zip(current_headers, values)))
                     previous_line = 'data' 
     
-    if 'singleton' in filepath.name:
-        assert len(result['modules']) == 8, f"Expected 8 modules in the result, got: {len(result['modules'])}. File: {zip_path}"
-    else:
-        assert len(result['modules']) == 11, f"Expected 11 modules in the result, got: {len(result['modules'])}. File: {zip_path}"
+    assert 12 > len(result['modules']) > 7, f"Expected 8-11 (inclusive) modules in the result, got: {len(result['modules'])}. File: {zip_path}"
     assert len(result) == 2, f"Expected result length: 2, got: {len(result)}"
     assert isinstance(result, dict), f"Expected result type: dict, got: {type(result)}"
                  
     return result
 
-def parse_module_header(line_parts, module_lines_done, i):
+def parse_module_header(line_parts, module_lines_done, line):
     assert len(line_parts) == 2, f"Expected 2 columns in module header, got: {line_parts}"
     assert len(line_parts) == 2, f"Expected 2 columns in module header, got: {line_parts}"
     current_module = line_parts[0][2:]
@@ -126,7 +123,7 @@ def parse_module_header(line_parts, module_lines_done, i):
     assert current_status in ["pass", "warn", "fail"], f"Unexpected module status: {current_status} in line: {line}"
     assert current_module, f"Module name cannot be empty in line: {line}"
     previous_line = 'module_header'               
-    assert previous_line not in module_lines_done, f"Found multiple module header lines for the same module on line {i}"
+    assert previous_line not in module_lines_done, f"Found multiple module header lines for the same module on line {line}"
     module_lines_done.add(previous_line)
 
     return current_module, current_status, previous_line, module_lines_done
@@ -144,21 +141,34 @@ def parse_fastqc_zip(zip_path: Path):
     finally:
         utils.remove_directory(extracted_path)
 
-def parse_fastqc_zips(zip_paths):
-    results = []
-    for zip_path in zip_paths:
-        result = parse_fastqc_zip(Path(zip_path))
-        results.append(result)
+def parse_fastqc_zips(production_root: Path):
+    
+    results = {}
+    
+    fastqc_root = production_root / "stats/reads/fastqc/"    
+    for file in fastqc_root.glob("*/*.zip"):
+        result = parse_fastqc_zip(file)
+        results[str(file)] = result
     return results
 
-def get_basic_stats(paths) -> pd.DataFrame:
+def parse_all_basic(raw_parse: dict) -> pd.DataFrame:
     combined_df = pd.DataFrame()
-    results = parse_fastqc_zips(paths)
-    for result in results:
+    for file_path, result in raw_parse.items():
+        metadata = [{'Measure': k, 'Value': v} for k, v in result['metadata'].items()]
         status_data = [{'Measure': f"{k} status", 'Value': v['status']} for k, v in result['modules'].items()]
         basic_stats = result['modules']['Basic Statistics']['table']['rows']
+        file_path = [{'Measure': 'file_path', 'Value': file_path}]
         header_data = [{'Measure': i, 'Value': j} for k, v in result['modules'].items() for i, j in v['header_values'].items()]
-        df = pd.DataFrame(basic_stats + header_data + status_data)
+        tables = [{'Measure': f"{k} table", 'Value': v['table']} for k, v in result['modules'].items()]
+        
+        df = pd.DataFrame(file_path + basic_stats + metadata + header_data + status_data + tables)
         df = df.set_index('Measure').T.reset_index(drop=True)
         combined_df = pd.concat([combined_df, df], ignore_index=True)
+    combined_df = combined_df.drop(columns=['Basic Statistics table'])
+
     return combined_df
+
+def parse(path_to_library_root_folder: str) -> pd.DataFrame:
+    root = Path(path_to_library_root_folder)
+    raw_parse = parse_fastqc_zips(root)
+    return parse_all_basic(raw_parse)

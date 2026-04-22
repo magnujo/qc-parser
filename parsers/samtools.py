@@ -3,11 +3,14 @@ import glob
 import os
 
 
-
 def parse_files(file_paths, output_tsv_path):
     # First pass: collect all metrics to build column headers
     metrics = []
     print('collecting metrics')
+    
+    for file in fastqc_root.glob("*/*.zip"):
+        
+    
     for filepath in file_paths:
         with open(filepath) as f:
             for line in f:
@@ -31,3 +34,13 @@ def parse_files(file_paths, output_tsv_path):
                         row[parts[1].rstrip(":")] = parts[2]
             writer.writerow([os.path.basename(filepath)] + [row[m] for m in metrics])
     print('done')
+    
+def parse_fastqc_zips(production_root: Path):
+    
+    results = {}
+    
+    fastqc_root = production_root / "stats/reads/fastqc/"    
+    for file in fastqc_root.glob("*/*.zip"):
+        result = parse_fastqc_zip(file)
+        results[str(file)] = result
+    return results
