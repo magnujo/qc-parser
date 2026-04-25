@@ -164,3 +164,7 @@ def parse(path_to_library_root_folder: str) -> pd.DataFrame:
     root = Path(path_to_library_root_folder)
     raw_parse = parse_fastqc_zips(root)
     return parse_all_basic(raw_parse)
+
+
+
+
